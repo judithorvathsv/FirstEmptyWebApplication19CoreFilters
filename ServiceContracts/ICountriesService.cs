@@ -24,7 +24,7 @@ namespace ServiceContracts
         /// </summary>
         /// <param name="CountryID"></param>
         /// <returns>Matchimg country as CountryResponse object</returns>
-        Task<CountryResponse>? GetCountryByCountryId(Guid? CountryID);
+        Task<CountryResponse?> GetCountryByCountryId(Guid? CountryID);
 
 
         /// <summary>

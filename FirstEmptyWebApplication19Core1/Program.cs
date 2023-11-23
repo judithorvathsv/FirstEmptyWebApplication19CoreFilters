@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Rotativa.AspNetCore;
 using ServiceContracts;
 using Services;
+using RepositoryContracts;
+using Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +14,8 @@ builder.Services.AddControllersWithViews();
 //add services into Ioc container
 builder.Services.AddScoped<ICountriesService, CountriesService>();
 builder.Services.AddScoped<IPersonsService, PersonsService>();
+builder.Services.AddScoped<ICountriesRepository, CountriesRepository>();
+builder.Services.AddScoped<IPersonsRepository, PersonsRepository>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(
     options =>
@@ -67,3 +71,6 @@ Eredmenye: Assert.True...
 /*CountryService:GetAllCountries() */
 
 /*CountriesServiceTest: GetAllCountries() method eredmenyet hasznalja mint inputot*/
+
+
+public partial class Program { } //integration test-hez kell

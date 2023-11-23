@@ -1,18 +1,16 @@
-﻿using Entities;
+﻿using AutoFixture;
+using Entities;
 using EntityFrameworkCoreMock;
+using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Moq;
+using RepositoryContracts;
 using ServiceContracts;
 using ServiceContracts.DTO;
 using ServiceContracts.Enums;
 using Services;
+using System.Linq.Expressions;
 using Xunit.Abstractions;
-using Moq;
-using AutoFixture;
-using FluentAssertions;
-using System.Collections.Generic;
-using System;
-using static System.Collections.Specialized.BitVector32;
-
 
 namespace CRUDTests
 {
@@ -22,6 +20,8 @@ namespace CRUDTests
         private readonly ICountriesService _countriesService;
         private readonly ITestOutputHelper _testOutputHelper;
         private readonly IFixture _fixture;
+        private readonly IPersonsRepository _personsRepository;
+        private readonly Mock<IPersonsRepository> _personsRepositoryMock;
 
         /*
         public PersonsServiceTest(ITestOutputHelper testOutputHelper)
@@ -35,11 +35,22 @@ namespace CRUDTests
      
         public PersonsServiceTest(ITestOutputHelper testOutputHelper)
         {
+            //---------Autofixture + mocking repo:----------------
+
             //Kell Autofixture Nuget package:
             _fixture = new Fixture();
 
+            //mocking repository
+            _personsRepositoryMock = new Mock<IPersonsRepository>();
+            _personsRepository = _personsRepositoryMock.Object;
+            _personsService = new PersonsService(_personsRepository);
+
             _testOutputHelper = testOutputHelper;
 
+
+
+
+            //-----------Ezek mind torolhetok, csak a regi methodokhoz hagytam meg:-----
             //Kell EntityFrameworkCoreMock.Moq es Moq nuget package
             var countriesInitialData = new List<Country>() { };
             var personsInitialData = new List<Person>() { };
@@ -47,16 +58,17 @@ namespace CRUDTests
             //mocking dbcontext:
             DbContextMock<ApplicationDbContext> dbContextMock = new DbContextMock<ApplicationDbContext>(
                 new DbContextOptionsBuilder<ApplicationDbContext>().Options
-                );
-
+             );
             ApplicationDbContext dbContext = dbContextMock.Object;
 
-            //mocking dbset:
+            //mocking dbset with mocked repository:
             dbContextMock.CreateDbSetMock(c => c.Countries, countriesInitialData);
-            _countriesService = new CountriesService(dbContext);
-            dbContextMock.CreateDbSetMock(c => c.Persons, personsInitialData);
-            _personsService = new PersonsService(dbContext, _countriesService);
+            _countriesService = new CountriesService(null);
+            dbContextMock.CreateDbSetMock(c => c.Persons, personsInitialData);  
         }
+
+
+
 
         #region AddPerson
         [Fact]
@@ -72,6 +84,21 @@ namespace CRUDTests
                await _personsService.AddPerson(personAddRequest);
             });
             */
+
+            //Assert with FluentAssertions package
+            Func<Task> action = async () =>
+            {
+                await _personsService.AddPerson(personAddRequest);
+            };
+            await action.Should().ThrowAsync<ArgumentNullException>();
+        }
+
+        //we do not need reposmocking:
+        [Fact]
+        public async Task AddPerson_NullPerson_ToBeArgumentNullException()
+        {
+            //Arrange
+            PersonAddRequest? personAddRequest = null;
 
             //Assert with FluentAssertions package
             Func<Task> action = async () =>
@@ -113,6 +140,27 @@ namespace CRUDTests
             await action.Should().ThrowAsync<ArgumentException>();
         }
 
+        //reposmocking:
+        [Fact]
+        public async Task AddPerson_PersonNameIsNull_ToBeArgumentException()
+        {
+            PersonAddRequest? personAddRequest = _fixture.Build<PersonAddRequest>()
+                .With(p => p.PersonName, null as string)
+                .Create();
+
+            Person person = personAddRequest.ToPerson();
+
+            //Assert with FluentAssertions package + Mock repo
+            _personsRepositoryMock
+                .Setup(t=>t.AddPerson(It.IsAny<Person>()))
+                .ReturnsAsync(person);
+            Func<Task> action = async () =>
+            {
+                await _personsService.AddPerson(personAddRequest);
+            };
+            await action.Should().ThrowAsync<ArgumentException>();
+        }
+
 
 
         [Fact]
@@ -133,7 +181,7 @@ namespace CRUDTests
             */
 
             PersonAddRequest personAddRequest = _fixture.Build<PersonAddRequest>()
-                .With(p=>p.Email, "someone@example.com")
+                .With(p => p.Email, "someone@example.com")
                 .Create();
 
 
@@ -151,11 +199,44 @@ namespace CRUDTests
             //Assert with FluentAssertions package
             response.PersonID.Should().NotBe(Guid.Empty);
             list.Should().Contain(response);
+        }
 
 
+        [Fact]
+        public async Task AddPerson_FullProperPersonDetails_ToBeSuccessful()
+        {
 
+            PersonAddRequest personAddRequest = _fixture.Build<PersonAddRequest>()
+                .With(p => p.Email, "someone@example.com")
+                .Create();
 
+            //mocking all service methods which using repository:
+            //Add method returns Person, which is the parameter in the method
+            Person person = personAddRequest.ToPerson();
+            PersonResponse person_response_expected = person.ToPersonResponse();
+            _personsRepositoryMock
+                .Setup(t => t.AddPerson(It.IsAny<Person>()))
+                .ReturnsAsync(person);
+      
 
+            //Act
+            PersonResponse response = await _personsService.AddPerson(personAddRequest);
+            //ez nem kell a repo mocking miatt:
+            //List<PersonResponse> list = await _personsService.GetAllPersons();
+
+            /*
+            //Assert
+            Assert.True(response.PersonID != Guid.Empty);
+            Assert.Contains(response, list);
+            */
+
+            //Assert with FluentAssertions package
+            response.PersonID.Should().NotBe(Guid.Empty);
+            //list.Should().Contain(response);
+
+            person_response_expected.PersonID = response.PersonID;
+            //Assert: FluentAssertions + Mocking:
+            response.Should().Be(person_response_expected);
         }
         #endregion
 
@@ -164,6 +245,22 @@ namespace CRUDTests
         #region GetPersonByPersonID
         [Fact]
         public async Task GetPersonByPersonID_NullPersonID()
+        {
+            Guid personId = Guid.Empty;
+
+            PersonResponse? response = await _personsService.GetPersonByPersonID(personId);
+            /*
+            //Assert
+            Assert.Null(response);
+            */
+
+            //Assert with FluentAssertions package           
+            response.Should().BeNull();
+        }
+
+        //no need repomocking:
+        [Fact]
+        public async Task GetPersonByPersonID_NullPersonID_ToBeNull()
         {
             Guid personId = Guid.Empty;
 
@@ -218,8 +315,29 @@ namespace CRUDTests
             */
 
             //Assert with FluentAssertions package           
-            response.Should().Be(personResponse);
-      
+            response.Should().Be(personResponse);      
+        }
+
+        //with repomocking:
+        [Fact]
+        public async Task GetPersonByPersonID_WithPersonID_ToBeSuccessfull()
+        {
+            Person person = _fixture.Build<Person>()
+                                                .With(p => p.Email, "someone@example.com")
+                                                .With(temp => temp.Country, null as Country)
+                                                .Create();
+            PersonResponse personResponse_expected =  person.ToPersonResponse();
+            _personsRepositoryMock
+                .Setup(t => t.GetPersonByPersonID(It.IsAny<Guid>()))
+                .ReturnsAsync(person);
+            //PersonResponse personResponse = await _personsService.AddPerson(personRequest);
+
+            PersonResponse? response = await _personsService.GetPersonByPersonID(person.PersonID);
+            //PersonResponse ? response = await _personsService.GetPersonByPersonID(personResponse.PersonID);
+
+            //Assert with FluentAssertions package           
+            //response.Should().Be(personResponse);
+            response.Should().Be(personResponse_expected);
         }
         #endregion
 
@@ -234,6 +352,18 @@ namespace CRUDTests
             //Assert
             Assert.Empty(getAll);
             */
+
+            //Assert with FluentAssertions package           
+            getAll.Should().BeEmpty();
+        }
+
+        //repomocking
+        [Fact]
+        public async Task GetAllPersons_EmptyList_Mocking()
+        {
+            _personsRepositoryMock.Setup(t => t.GetAllPersons())
+                .ReturnsAsync(new List<Person>());
+            List<PersonResponse> getAll = await _personsService.GetAllPersons();
 
             //Assert with FluentAssertions package           
             getAll.Should().BeEmpty();
@@ -351,6 +481,71 @@ namespace CRUDTests
             */
             //Assert with FluentAssertions package           
             listFromDB.Should().BeEquivalentTo(personResponseList);
+
+        }
+
+
+        [Fact]
+        public async Task GetAllPersons_AddFewPersons_ToBeSuccessfull()
+        {
+            List<Person> persons = new List<Person>() { 
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example2.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example3.com")
+                .With(temp => temp.Country, null as Country)
+                .Create()
+        };
+
+            //List<PersonAddRequest> personAddRequestsList = new List<PersonAddRequest>()
+            //{
+            //    personRequest1, personRequest2, personRequest3
+            //};
+
+            List<PersonResponse> personResponseList_expected = persons.Select(t => t.ToPersonResponse()).ToList();
+
+            //List<PersonResponse> personResponseList = new List<PersonResponse>();
+
+            //foreach (var req in personAddRequestsList)
+            //{
+            //    PersonResponse personResponse = await _personsService.AddPerson(req);
+            //    personResponseList.Add(personResponse);
+            //}
+
+            _personsRepositoryMock.Setup(t => t.GetAllPersons()).ReturnsAsync(persons);
+            List<PersonResponse> listFromDB = await _personsService.GetAllPersons();
+
+
+            //print out output Expected
+            _testOutputHelper.WriteLine("Expected:");
+            foreach (PersonResponse p in personResponseList_expected)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+            //print out output Actual from Db
+            _testOutputHelper.WriteLine("Actual:");
+            foreach (PersonResponse p in listFromDB)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+
+            /*
+            //ASSERT
+            foreach (PersonResponse p in personResponseList)
+            {
+                Assert.Contains(p, listFromDB);
+            }
+            */
+            //Assert with FluentAssertions package           
+            //listFromDB.Should().BeEquivalentTo(personResponseList);
+
+            listFromDB.Should().BeEquivalentTo(personResponseList_expected);
 
         }
         #endregion
@@ -477,6 +672,62 @@ namespace CRUDTests
             */
             //Assert with FluentAssertions package           
             listFromDB.Should().BeEquivalentTo(personResponseList);
+        }
+
+        //repomocking:
+        [Fact]
+        public async Task GetFilteredPersons_EmptySearchText_ToBeSuccessful()
+        {
+            List<Person> persons = new List<Person>() {
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example2.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example3.com")
+                .With(temp => temp.Country, null as Country)
+                .Create()
+        };
+
+            List<PersonResponse> personResponseList_expected = persons.Select(t => t.ToPersonResponse()).ToList();
+            List<PersonResponse> personResponseList = new List<PersonResponse>();
+
+            //print out output Expected
+            _testOutputHelper.WriteLine("Expected:");
+            foreach (PersonResponse p in personResponseList)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+            //---------------------------------------------------------------
+            _personsRepositoryMock
+                .Setup(t => t.GetFilteredPersons(It.IsAny<Expression<Func<Person, bool>>>()))
+                .ReturnsAsync(persons);
+
+            List<PersonResponse> listFromDB =
+               await _personsService.GetFilteredPersons(nameof(PersonAddRequest.PersonName), "");
+
+            //print out output Actual from Db
+            _testOutputHelper.WriteLine("Actual:");
+            foreach (PersonResponse p in listFromDB)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+            //---------------------------------------------------------------
+
+            /*
+            //ASSERT
+            foreach (PersonResponse p in personResponseList)
+            {
+                Assert.Contains(p, listFromDB);
+            }
+            */
+            //Assert with FluentAssertions package           
+            //listFromDB.Should().BeEquivalentTo(personResponseList);
+            listFromDB.Should().BeEquivalentTo(personResponseList_expected);
         }
 
 
@@ -608,6 +859,64 @@ namespace CRUDTests
             //Assert with FluentAssertions package           
             listFromDB.Should()
                 .OnlyContain(temp=>temp.PersonName.Contains("ma", StringComparison.OrdinalIgnoreCase));
+        }
+
+
+        [Fact]
+        public async Task GetFilteredPersons_SearchByPersonName_ToBeSuccessful()
+        {
+            List<Person> persons = new List<Person>() {
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example2.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example3.com")
+                .With(temp => temp.Country, null as Country)
+                .Create()
+        };
+
+            List<PersonResponse> personResponseList_expected = persons.Select(t => t.ToPersonResponse()).ToList();
+            List<PersonResponse> personResponseList = new List<PersonResponse>();
+
+            //print out output Expected
+            _testOutputHelper.WriteLine("Expected:");
+            foreach (PersonResponse p in personResponseList)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+            //---------------------------------------------------------------
+            _personsRepositoryMock
+                .Setup(t => t.GetFilteredPersons(It.IsAny<Expression<Func<Person, bool>>>()))
+                .ReturnsAsync(persons);
+
+            List<PersonResponse> listFromDB =
+               await _personsService.GetFilteredPersons(nameof(PersonAddRequest.PersonName), "sa");
+
+            //print out output Actual from Db
+            _testOutputHelper.WriteLine("Actual:");
+            foreach (PersonResponse p in listFromDB)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+            //---------------------------------------------------------------
+
+            /*
+            //ASSERT
+            foreach (PersonResponse p in personResponseList)
+            {
+                Assert.Contains(p, listFromDB);
+            }
+            */
+            //Assert with FluentAssertions package           
+            //listFromDB.Should().BeEquivalentTo(personResponseList);
+            listFromDB.Should().BeEquivalentTo(personResponseList_expected);
+            //listFromDB.Should()
+            //    .OnlyContain(temp => temp.PersonName.Contains("ma", StringComparison.OrdinalIgnoreCase));
         }
 
         #endregion
@@ -747,6 +1056,67 @@ namespace CRUDTests
             //Assert with FluentAssertions package          
             listFromDB.Should().BeInDescendingOrder(t => t.PersonName);
         }
+
+
+        //repomock:
+        [Fact]
+        public async Task GetSortedPersons_byPersonName_ToBeSuccessfull()
+        {
+            List<Person> persons = new List<Person>() {
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example2.com")
+                .With(temp => temp.Country, null as Country)
+                .Create(),
+            _fixture.Build<Person>()
+                .With(p => p.Email, "person@example3.com")
+                .With(temp => temp.Country, null as Country)
+                .Create()
+        };
+
+            List<PersonResponse> personResponseList_expected = persons.Select(t => t.ToPersonResponse()).ToList();
+
+            _personsRepositoryMock.Setup(t => t.GetAllPersons()).ReturnsAsync(persons);
+
+            //print out output Expected
+            _testOutputHelper.WriteLine("Expected:");
+            foreach (PersonResponse p in personResponseList_expected)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+
+            //---------------------------------------------------------------
+            List<PersonResponse> allPersons = await _personsService.GetAllPersons();
+
+            //mivel a service-ben levo GetSortedPersons method nem hiv be repository-t igy ezt nem bantjuk:
+            List<PersonResponse> listFromDB =
+                await _personsService.GetSortedPersons(
+                    allPersons,
+                    nameof(PersonAddRequest.PersonName),
+                    SortOrderOptions.DESC);
+
+            //print out output Actual from Db
+            _testOutputHelper.WriteLine("Actual:");
+            foreach (PersonResponse p in listFromDB)
+            {
+                _testOutputHelper.WriteLine(p.ToString());
+            }
+
+            //---------------------------------------------------------------
+            /*
+            //ASSERT
+            for (int i = 0; i < personResponseList.Count(); i++)
+            {
+                Assert.Equal(personResponseList[i], listFromDB[i]);
+            }
+            */
+            //Assert with FluentAssertions package          
+            listFromDB.Should().BeInDescendingOrder(t => t.PersonName);
+        }
+
         #endregion
 
 
@@ -773,6 +1143,20 @@ namespace CRUDTests
             await action.Should().ThrowAsync<ArgumentNullException>();
         }
 
+        //repomock: itt nincs mit, csak a method kapott uj nevet. A folotte levo methodot lehet torolni.
+        [Fact]
+        public async Task UpdatePerson_NullPerson_ToBeArgumentNullException()
+        {
+            //Arrange
+            PersonUpdateRequest? personUpdateRequest = null;
+             
+            //Assert with FluentAssertions package          
+            Func<Task> action = async () =>
+            {
+                await _personsService.UpdatePerson(personUpdateRequest);
+            };
+            await action.Should().ThrowAsync<ArgumentNullException>();
+        }
 
         //id invalid => argument null exception
         [Fact]
@@ -801,8 +1185,23 @@ namespace CRUDTests
                 await _personsService.UpdatePerson(personUpdateRequest);
             };
             await action.Should().ThrowAsync<ArgumentException>();
-
         }
+
+
+        //repomock: itt nincs mit, csak a method kapott uj nevet. A folotte levo methodot lehet torolni.
+        [Fact]
+        public async Task UpdatePerson_InvalidPersonId_ToBeArgumentException()
+        {
+            PersonUpdateRequest? personUpdateRequest = _fixture.Build<PersonUpdateRequest>()
+                .Create();
+            //Assert with FluentAssertions package          
+            Func<Task> action = async () =>
+            {
+                await _personsService.UpdatePerson(personUpdateRequest);
+            };
+            await action.Should().ThrowAsync<ArgumentException>();
+        }
+
 
 
         //personName is null => argumentexception
@@ -836,8 +1235,7 @@ namespace CRUDTests
                 CountryID = country.CountryID,
                 Address = "sample address",
                 ReceiveNewsLetters = true
-            };
-          
+            };          
 
             PersonResponse personResponse = await _personsService.AddPerson(personAddRequest);
               */
@@ -853,6 +1251,29 @@ namespace CRUDTests
                 await _personsService.UpdatePerson(personUpdateRequest);
             });
             */
+            //Assert with FluentAssertions package          
+            var action = async () =>
+            {
+                await _personsService.UpdatePerson(personUpdateRequest);
+            };
+            await action.Should().ThrowAsync<ArgumentException>();
+        }
+
+
+        //repomock: 
+        [Fact]
+        public async Task UpdatePerson_InvalidPersonName_ToBeArgumentException()
+        {
+            Person person = _fixture.Build<Person>()
+                .With(p => p.PersonName, null as string)
+                .With(p => p.Email, "person@example.com")
+                .With(P => P.Country, null as Country)
+                .With(p => p.Gender, "Male")
+                .Create();
+            PersonResponse personResponse = person.ToPersonResponse();
+
+            PersonUpdateRequest personUpdateRequest = personResponse.ToPersonUpdateRequest();
+
             //Assert with FluentAssertions package          
             var action = async () =>
             {
@@ -912,7 +1333,34 @@ namespace CRUDTests
             */
             //Assert with FluentAssertions package          
             updatedPersonResponseFromService.Should().Be(updatedPersonFromDB);
+        }
 
+        //repomock: 
+        [Fact]
+        public async Task UpdatePerson_PersonFullDetails_ToBeSuccessful()
+        {
+            Person person = _fixture.Build<Person>()
+                .With(p => p.Email, "person@example.com")
+                .With(P => P.Country,null as Country)
+                .With(p => p.Gender, "Male")
+                .Create();
+            PersonResponse personResponse = person.ToPersonResponse();
+
+            PersonUpdateRequest personUpdateRequest = personResponse.ToPersonUpdateRequest();
+
+            _personsRepositoryMock
+                .Setup(t => t.UpdatePerson(It.IsAny<Person>()))
+                .ReturnsAsync(person);
+
+            _personsRepositoryMock
+                .Setup(t => t.GetPersonByPersonID(It.IsAny<Guid>()))
+                .ReturnsAsync(person);
+
+            PersonResponse updatedPersonResponseFromService = await _personsService.UpdatePerson(personUpdateRequest);           
+
+            //Assert with FluentAssertions package          
+            //updatedPersonResponseFromService.Should().Be(updatedPersonFromDB);
+            updatedPersonResponseFromService.Should().Be(personResponse);
         }
         #endregion
 
@@ -956,6 +1404,29 @@ namespace CRUDTests
             //Assert
             Assert.True(isDeleted);
             */
+            //Assert with FluentAssertions package 
+            isDeleted.Should().BeTrue();
+        }
+        //repomock: 
+        [Fact]
+        public async Task DeletePerson_ValidPersonID_ToBeSuccessful()
+        {
+            Person person = _fixture.Build<Person>()
+                .With(p => p.Email, "person@example.com")
+                .With(P => P.Country, null as Country)
+                .With(p => p.Gender, "Male")
+                .Create();
+
+            _personsRepositoryMock
+                .Setup(t => t.DeletePersonByPersonID(It.IsAny<Guid>()))
+                .ReturnsAsync(true);
+
+            _personsRepositoryMock
+                .Setup(t => t.GetPersonByPersonID(It.IsAny<Guid>()))
+                .ReturnsAsync(person);
+
+            bool isDeleted = await _personsService.DeletePerson(person.PersonID);
+
             //Assert with FluentAssertions package 
             isDeleted.Should().BeTrue();
         }

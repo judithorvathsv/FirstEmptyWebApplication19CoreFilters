@@ -85,7 +85,7 @@ namespace FirstEmptyWebApplication19Core1.Controllers
                     .SelectMany(v => v.Errors)
                     .Select(e => e.ErrorMessage).ToList();
 
-                return View();
+                return View(personAddRequest);
             }
 
             PersonResponse personResponse = await _personsService.AddPerson(personAddRequest);
