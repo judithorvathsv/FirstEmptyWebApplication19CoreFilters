@@ -11,6 +11,9 @@ using System.IO;
 using CsvHelper.Configuration;
 using OfficeOpenXml;
 using RepositoryContracts;
+using Microsoft.Extensions.Logging;
+using SerilogTimings;
+using Serilog;
 
 namespace Services
 {
@@ -18,12 +21,18 @@ namespace Services
     {
 
         //private readonly ICountriesRepository _db;
-        private readonly IPersonsRepository _personsRepository;      
+        private readonly IPersonsRepository _personsRepository;
+        private readonly ILogger<PersonsService> _logger;
+        private readonly IDiagnosticContext _diagnosticContext;
 
-        public PersonsService(IPersonsRepository personsRepository)
+        public PersonsService(IPersonsRepository personsRepository, 
+            ILogger<PersonsService> logger,
+            IDiagnosticContext diagnosticContext)
         {
             //Mockaroo.com
-            _personsRepository = personsRepository;                    
+            _personsRepository = personsRepository;  
+            _logger = logger;
+            _diagnosticContext = diagnosticContext;
         }
 
 
@@ -97,6 +106,8 @@ namespace Services
 
         public async Task<List<PersonResponse>> GetAllPersons()
         {
+            _logger.LogInformation("GetAllPersons of PersonService");
+
             //ez azert kell, mert van benne include, es a convertPersonToPersonResponse-t modositottuk, 
             //a countryname-et igy kapjuk meg: person.Country.CountryName
             var persons = await _personsRepository.GetAllPersons();
@@ -152,34 +163,40 @@ namespace Services
         //convert from Person to PersonResponse
         public async Task<List<PersonResponse>> GetFilteredPersons(string searchBy, string? searchString)
         {
-            List<Person> persons = searchBy switch   
-            {
-                nameof(PersonResponse.PersonName) =>
-                        await _personsRepository.GetFilteredPersons(temp =>
-                            temp.PersonName.Contains(searchString)),
+            _logger.LogInformation("GetFilteredPersons of PersonService");
 
-                nameof(PersonResponse.Email) =>
-                        await _personsRepository.GetFilteredPersons(temp =>
-                            temp.Email.Contains(searchString)),
+            List<Person> persons;
 
-                nameof(PersonResponse.DateOfBirth) =>
-                        await _personsRepository.GetFilteredPersons(temp =>
-                            temp.DateOfBirth.Value.ToString("yyyy MMMM dd").Contains(searchString)),
+            using (Operation.Time("Time for Filtered Persons from Database")) {
+                persons = searchBy switch
+                {
+                    nameof(PersonResponse.PersonName) =>
+                            await _personsRepository.GetFilteredPersons(temp =>
+                                temp.PersonName.Contains(searchString)),
 
-                nameof(PersonResponse.Gender) =>
-                        await _personsRepository.GetFilteredPersons(temp =>
-                            temp.Gender.Contains(searchString)),
+                    nameof(PersonResponse.Email) =>
+                            await _personsRepository.GetFilteredPersons(temp =>
+                                temp.Email.Contains(searchString)),
 
-                nameof(PersonResponse.CountryID) =>
-                        await _personsRepository.GetFilteredPersons(temp =>
-                            temp.Country.CountryName.Contains(searchString)),
+                    nameof(PersonResponse.DateOfBirth) =>
+                            await _personsRepository.GetFilteredPersons(temp =>
+                                temp.DateOfBirth.Value.ToString("yyyy MMMM dd").Contains(searchString)),
 
-                nameof(PersonResponse.Address) =>
-                        await _personsRepository.GetFilteredPersons(temp =>
-                            temp.Address.Contains(searchString)),
+                    nameof(PersonResponse.Gender) =>
+                            await _personsRepository.GetFilteredPersons(temp =>
+                                temp.Gender.Contains(searchString)),
 
-               _=> await _personsRepository.GetAllPersons()
-            };
+                    nameof(PersonResponse.CountryID) =>
+                            await _personsRepository.GetFilteredPersons(temp =>
+                                temp.Country.CountryName.Contains(searchString)),
+
+                    nameof(PersonResponse.Address) =>
+                            await _personsRepository.GetFilteredPersons(temp =>
+                                temp.Address.Contains(searchString)),
+
+                    _ => await _personsRepository.GetAllPersons()
+                };
+            } //end of using block of serilog timings
             return persons.Select(p=>p.ToPersonResponse()).ToList();
         }
 
@@ -188,6 +205,8 @@ namespace Services
 
         public async Task<List<PersonResponse>> GetSortedPersons(List<PersonResponse> allPersons, string sortBy, SortOrderOptions sortOrder)
         {
+            _logger.LogInformation("GetSortedPersons of PersonService");
+
             if (string.IsNullOrEmpty(sortBy))
             {
                 return allPersons;

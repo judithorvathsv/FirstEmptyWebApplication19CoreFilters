@@ -14,12 +14,14 @@ namespace FirstEmptyWebApplication19Core1.Controllers
 
         private readonly IPersonsService _personsService;
         private readonly ICountriesService _countriesService;
+        private readonly ILogger<PersonsController> _logger;
 
 
-        public PersonsController(IPersonsService personsService, ICountriesService countriesService)
+        public PersonsController(IPersonsService personsService, ICountriesService countriesService, ILogger<PersonsController> logger)
         {
             _personsService = personsService;
             _countriesService = countriesService;
+            _logger = logger;
         }
 
 
@@ -28,8 +30,14 @@ namespace FirstEmptyWebApplication19Core1.Controllers
         [Route("/")]
         public async Task<IActionResult> Index(
             string? searchBy, string? searchString,
-            string sortBy = nameof(PersonResponse.PersonName), SortOrderOptions sortOrder = SortOrderOptions.ASC)
+            string sortBy = nameof(PersonResponse.PersonName), 
+            SortOrderOptions sortOrder = SortOrderOptions.ASC)
         {
+
+            _logger.LogInformation("Index action method of PersonController");
+
+            _logger.LogDebug($"search by: {searchString}, sortby: {sortBy}, sortOrder: {sortOrder} ");
+
             //search dropdown
             ViewBag.SearchFields = new Dictionary<string, string>()
             {

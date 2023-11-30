@@ -5,8 +5,32 @@ using ServiceContracts;
 using Services;
 using RepositoryContracts;
 using Repositories;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+/*
+//disable logging provider:
+builder.Host.ConfigureLogging(loggingProvider => { 
+loggingProvider.ClearProviders();
+    //loggingProvider.AddConsole();
+    loggingProvider.AddDebug();
+    loggingProvider.AddEventLog();
+});
+*/
+
+//Serilog
+builder.Host.UseSerilog((HostBuilderContext context, 
+                        IServiceProvider services, 
+                        LoggerConfiguration loggerConfiguration) =>
+{
+    loggerConfiguration.ReadFrom.Configuration(context.Configuration) //reading from appsettings
+    .ReadFrom.Services(services); //reading from services and make them avalilable
+});
+
+
+
+
 
 builder.Services.AddControllersWithViews();
 
@@ -24,6 +48,11 @@ builder.Services.AddDbContext<ApplicationDbContext>(
     } 
     );
 
+builder.Services.AddHttpLogging(options => {
+    options.LoggingFields = Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.RequestProperties
+    | Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.ResponsePropertiesAndHeaders;
+    ;
+    });
 
 var app = builder.Build();
 
@@ -32,12 +61,19 @@ if (builder.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
 }
 
+//http request logginghoz kell!
+//appsetting.development -et is modositani kell, loggingba warning helyettinfo: "Microsoft.AspNetCore": "Information"
+app.UseHttpLogging();
 
+/*
 app.Logger.LogDebug("debug-message");
+
 app.Logger.LogInformation("information-message");
 app.Logger.LogWarning("warning-message");
 app.Logger.LogError("error-message");
 app.Logger.LogCritical("critical-message");
+*/
+
 
 //Ez kell, ha a wwwroot folderbe akarok wkhtmltopdf.exe-t rakni:
 //Rotativa.AspNetCore.RotativaConfiguration.Setup("wwwroot", wkhtmltopdfRelativePath: "Rotativa");

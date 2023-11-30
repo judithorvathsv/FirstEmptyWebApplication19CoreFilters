@@ -5,12 +5,14 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using RepositoryContracts;
+using Serilog;
 using ServiceContracts;
 using ServiceContracts.DTO;
 using ServiceContracts.Enums;
 using Services;
 using System.Linq.Expressions;
 using Xunit.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace CRUDTests
 {
@@ -43,7 +45,11 @@ namespace CRUDTests
             //mocking repository
             _personsRepositoryMock = new Mock<IPersonsRepository>();
             _personsRepository = _personsRepositoryMock.Object;
-            _personsService = new PersonsService(_personsRepository);
+            var diagnosticContextMock = new Mock<IDiagnosticContext>();
+            var loggerMock = new Mock<ILogger<PersonsService>>();
+            _personsService = new PersonsService(_personsRepository, 
+                loggerMock.Object,
+                diagnosticContextMock.Object);
 
             _testOutputHelper = testOutputHelper;
 
