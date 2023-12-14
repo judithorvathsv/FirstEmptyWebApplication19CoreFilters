@@ -6,6 +6,7 @@ using Services;
 using RepositoryContracts;
 using Repositories;
 using Serilog;
+using FirstEmptyWebApplication19Core1.Filters.ActionFilters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,7 +33,23 @@ builder.Host.UseSerilog((HostBuilderContext context,
 
 
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options=>
+{
+    //ha nincs argument, igy lehet ordert adni:
+    //options.Filters.Add<ResponseHeaderActionFilter>(5);
+
+    //ha nincs argument:
+    //options.Filters.Add<ResponseHeaderActionFilter>();
+    //ha nincs pl ilogger de van argument
+    //options.Filters.Add(new ResponseHeaderActionFilter(null, "My-Key-From-Global", "My-Value-From-Global"));
+    //ha van ilogger + argument
+    var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<ResponseHeaderActionFilter>>();
+    //IOrderedFilter nelkul (ResponseHeaderFilterben):
+    //options.Filters.Add(new ResponseHeaderActionFilter(logger, "My-Key-From-Global", "My-Value-From-Global"));
+    //IOrderedFilter-rel (ResponseHeaderFilterben)
+    options.Filters.Add(new ResponseHeaderActionFilter(logger, "My-Key-From-Global", "My-Value-From-Global", 2));
+});
+
 
 
 //add services into Ioc container
